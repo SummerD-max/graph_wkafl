@@ -1,33 +1,144 @@
-import numpy
+import logging
+
 import syft as sy
 import torch
-import torchvision
-import logging
-from torch.autograd import Variable
-import torchvision as tv            #里面含有许多数据集
-import torch
-import torchvision.transforms as transforms    #实现图片变换处理的包
-from torchvision.transforms import ToPILImage
+
+from models import DGI
+from utils import aug
+from utils import process
+import scipy.sparse as sp
 
 logger = logging.getLogger(__name__)
+
 
 class testDataLoader():
     def __init__(self, data, targets):
         self.data = data
         self.labels = targets
+
     def __len__(self):
         return len(self.labels)
+
     def __getitem__(self, idx):
         data = self.data[idx]
         label = self.labels[idx]
         return data, label
+
+
 def testLoader(testset):
     datas = testset.data
-    data = [torch.unsqueeze(1.*torch.tensor(datas[i].transpose()),0) for i in range(10000)]
+    data = [torch.unsqueeze(1. * torch.tensor(datas[i].transpose()), 0) for i in range(10000)]
     data = torch.cat(data, 0)
     return testDataLoader(data, testset.targets)
 
-def dataset_federate_noniid(trainset, workers, transform, classNum):
+
+def get_federated_graph_dataset(dataset_name, n_clients):
+    """
+    distribute dataset to all the clients
+    :param dataset_name: the name of the dataset
+    :param n_clients: num of clients
+    """
+
+    # Store the training data and labels of all the clients
+    datasets = []
+    # TODO: populate this datasets list with ((adj, feature..), labels) in the following for loop
+
+    for i in range(n_clients):
+        # path of features
+        path_feat = "/home/amax/lym/SAFA_semiAsyncFL-master/data/{}/{}/{}_{}_feat.txt".format(
+            dataset_name, n_clients, dataset_name, i
+        )
+        # path of edges
+        path_edge = "/home/amax/lym/SAFA_semiAsyncFL-master/data/{}/{}/{}_{}.txt".format(
+            dataset_name, n_clients, dataset_name, i
+        )
+
+        adj, features, seq = process.load_data_2(path_edge, path_feat)
+        num_nodes = features.shape[0]
+        ft_size = features.shape[1]
+
+        print(f"第{i}个参与方的节点数量:{num_nodes}")
+        print(f"第{i}个参与方的特征数量:{ft_size}")
+
+        # hyperparameter
+        hid_units = 256
+        activation_fc = 'relu'
+        lr = 0.001
+        weight_decay = 0.0001
+
+        # define model and optimizer
+        model = DGI(n_in=ft_size, n_h=hid_units, activation=activation_fc)
+        optimizer = torch.optim.Adam(params=model.parameters(), lr=lr, weight_decay=weight_decay)
+
+        # define augmentation option
+        aug_type = 'mask'
+        drop_percent = 0.4
+
+        # data augmentation
+        if aug_type == 'edge':
+            aug_features1 = features
+            aug_features2 = features
+            aug_adj1 = aug.aug_random_edge(adj, drop_percent=drop_percent)
+            aug_adj2 = aug.aug_random_edge(adj, drop_percent=drop_percent)
+        elif aug_type == 'subgraph':
+            aug_features1, aug_adj1 = aug.aug_subgraph(features, adj, drop_percent=drop_percent)
+            aug_features2, aug_adj2 = aug.aug_subgraph(features, adj, drop_percent=drop_percent)
+        elif aug_type == 'node':
+            aug_features1, aug_adj1 = aug.aug_drop_node(features, adj, drop_percent=drop_percent)
+            aug_features2, aug_adj2 = aug.aug_drop_node(features, adj, drop_percent=drop_percent)
+        elif aug_type == 'mask':  # Change the node features, preserving the graph topology
+            aug_features1 = aug.aug_random_mask(features, drop_percent=drop_percent)
+            aug_features2 = aug.aug_random_mask(features, drop_percent=drop_percent)
+            aug_adj1 = adj
+            aug_adj2 = adj
+        else:
+            raise ValueError("the aug_type is incorrect")
+
+        # normalize adj
+        adj = process.normalize_adj(adj + sp.eye(adj.shape[0]))
+
+        # normalize aug_adj
+        aug_adj1 = process.normalize_adj(aug_adj1 + sp.eye(aug_adj1.shape[0]))
+        aug_adj2 = process.normalize_adj(aug_adj2 + sp.eye(aug_adj2.shape[0]))
+
+        # sparse adj
+        sp_adj = process.sparse_mx_to_torch_sparse_tensor(adj)
+
+        # sparse aug_adj
+        sp_aug_adj1 = process.sparse_mx_to_torch_sparse_tensor(aug_adj1)
+        sp_aug_adj2 = process.sparse_mx_to_torch_sparse_tensor(aug_adj2)
+
+        # specify device
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        if torch.cuda.is_available():
+            print("using gpu")
+
+            # move training model to device
+            model.to(device)
+
+            # move features to device
+            features = features.to(device)
+
+            # move aug_features to device
+            aug_features1 = aug_features1.to(device)
+            aug_features2 = aug_features2.to(device)
+
+            # move sp_adj to device
+            sp_adj = sp_adj.to(device)
+
+            # move sp_aug_adj to device
+            sp_aug_adj1 = sp_aug_adj1.to(device)
+            sp_aug_adj2 = sp_aug_adj2.to(device)
+
+            # train_data = (features, shuffle_features, aug_features1, aug_features2, sp_adj, sp_aug_adj1, sp_aug_adj2)
+
+        # TODO: populate datasets list with ((adj, feature..), labels)
+        # for example: datasets.append(sy.frameworks.torch.fl.dataset.BaseDataset(user_data, user_label))
+        # user_data: Tuple(adj, feature)
+        # user_label: [0, 1]???
+        datasets.append()
+
+def dataset_federate_noniid(trainset, workers, classNum):
     """
     Add a method to easily transform a torch.Dataset or a sy.BaseDataset
     into a sy.FederatedDataset. The dataset given is split in len(workers)
@@ -41,11 +152,11 @@ def dataset_federate_noniid(trainset, workers, transform, classNum):
 
     data_new = []
     for i in range(50000):
-        data_new.append(torch.unsqueeze(1.*torch.tensor(datas[i].transpose()),0))
-    datas = torch.cat(data_new,0)
+        data_new.append(torch.unsqueeze(1. * torch.tensor(datas[i].transpose()), 0))
+    datas = torch.cat(data_new, 0)
 
     for i in range(10):
-        index = (labels==i)
+        index = (labels == i)
         dataset[str(i)] = datas[index]
 
     datasets = []
@@ -60,7 +171,7 @@ def dataset_federate_noniid(trainset, workers, transform, classNum):
         dataRate = dataRate / torch.sum(dataRate)
         dataNum = torch.randperm(40)[0] + 10
         dataNum = torch.round(dataNum * dataRate)
-        if classNum>1:
+        if classNum > 1:
             datasnum = torch.zeros([10])
             datasnum[labelClass.tolist()] = dataNum
             datasTotalNum.append(datasnum)
@@ -84,13 +195,12 @@ def dataset_federate_noniid(trainset, workers, transform, classNum):
             user_label = labelClass[j] * torch.ones(datanum)
             user_data = torch.tensor(user_data)
 
-
         worker = workers[i]
         logger.debug("Sending data to worker %s", worker.id)
         user_data = user_data.send(worker)
         user_label = user_label.send(worker)
         datasets.append(sy.frameworks.torch.fl.dataset.BaseDataset(user_data, user_label))
-        #datasets.append(sy.BaseDataset(user_data, user_label))  # .send(worker)
+        # datasets.append(sy.BaseDataset(user_data, user_label))  # .send(worker)
     logger.debug("Done!")
     return sy.FederatedDataset(datasets), datasTotalNum
 

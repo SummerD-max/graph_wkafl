@@ -258,7 +258,7 @@ optim_sever = optim.SGD(params=model.parameters(), lr=args.lr)  # 定义服务�
 transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))])
 # 把数据变为tensor并且归一化range [0, 255] -> [0.0,1.0]
 trainset = tv.datasets.CIFAR10(root='data2/', train=True, download=True, transform=transform)
-federated_data, dataNum = cifar10_dataloader.dataset_federate_noniid(trainset, workers, transform, args.classNum)
+federated_data, dataNum = cifar10_dataloader.dataset_federate_noniid(trainset, workers, args.classNum)
 # Jaccard = JaDis(dataNum, args.user_num)
 # print('Jaccard distance is {}'.format(Jaccard))
 
@@ -312,7 +312,7 @@ for itr in range(1, args.total_iterations + 1):
         # optimizer = optims[data.location.id]
         # 返回梯度张量，列表形式；同时返回loss；gradient=False，则返回-lr*grad
 
-        # TODO 在这里改模型model_round(该客户端的训练模型)、训练数据train_data改为图数据、优化器改成GCN所用到的优化器，
+        # TODO: 在这里改模型model_round(该客户端的训练模型)、训练数据train_data改为图数据、优化器改成GCN所用到的优化器，
         Gradients_Sample, loss = train(args.lr, model_round, train_data, train_targets, device, optimizer)
         Loss_train += loss
         if itr > 1:
@@ -353,6 +353,7 @@ for itr in range(1, args.total_iterations + 1):
         params_sever.data.add_(-lr, Collect_Gradients[grad_idx])
 
     # 同步更新不需要下面代码；异步更新需要下段代码
+    # global model -> client model (last )
     for worker_idx in range(len(workers_list)):
         worker_model = models[workers_list[worker_idx]]
         for idx, (params_server, params_client) in enumerate(zip(model.parameters(), worker_model.parameters())):

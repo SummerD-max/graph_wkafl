@@ -151,7 +151,7 @@ optim_sever = optim.SGD(params=model.parameters(), lr=args.lr)    # 定义服务
 transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize(mean=(0.5,0.5,0.5), std=(0.5,0.5,0.5))])
 #把数据变为tensor并且归一化range [0, 255] -> [0.0,1.0]
 trainset = tv.datasets.CIFAR10(root='data2/', train=True, download=False, transform=transform)
-federated_data, dataNum = cifar10_dataloader.dataset_federate_noniid(trainset, workers, transform, args.classNum)
+federated_data, dataNum = cifar10_dataloader.dataset_federate_noniid(trainset, workers, args.classNum)
 Jaccard = JaDis(dataNum, args.user_num)
 print('Jaccard distance is {}'.format(Jaccard))
 

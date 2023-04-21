@@ -1,2 +1,0 @@
-import syft
-print(syft)
