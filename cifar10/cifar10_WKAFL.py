@@ -206,8 +206,6 @@ def test(model, test_loader, device):
 
 ##########################定义训练过程，返回梯度########################
 def train(learning_rate, model, train_data, train_targets, device, optimizer):
-    ##### 这里只进行了一次梯度下降，那么我们要自适应迭代次数，我们可以在这里进行设计
-    ##### 我们可以传进一个 param：iter_times 代表迭代的次数，然后使用for循环进行迭代
     model.train()
     model.zero_grad()
     train_targets = Variable(train_targets.long())
@@ -243,7 +241,7 @@ def JaDis(datasNum, userNum):
 ###################################################################################
 ##################################模型和用户生成###################################
 start = time.time()
-model = Net()
+model = Net()  # global model
 workers = []
 models = {}
 optims = {}
@@ -313,6 +311,8 @@ for itr in range(1, args.total_iterations + 1):
         train_data, train_targets = train_data.get(), train_targets.get()
         # optimizer = optims[data.location.id]
         # 返回梯度张量，列表形式；同时返回loss；gradient=False，则返回-lr*grad
+
+        # TODO 在这里改模型model_round(该客户端的训练模型)、训练数据train_data改为图数据、优化器改成GCN所用到的优化器，
         Gradients_Sample, loss = train(args.lr, model_round, train_data, train_targets, device, optimizer)
         Loss_train += loss
         if itr > 1:
