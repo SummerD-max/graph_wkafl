@@ -1,5 +1,6 @@
 import logging
 
+import numpy as np
 import syft as sy
 import torch
 
@@ -32,18 +33,25 @@ def testLoader(testset):
     return testDataLoader(data, testset.targets)
 
 
-def get_federated_graph_dataset(dataset_name, n_clients):
+def get_federated_graph_dataset(dataset_name, workers):
     """
-    distribute dataset to all the clients
-    :param dataset_name: the name of the dataset
-    :param n_clients: num of clients
+    the graph dataset given is split into len(workers) parts and sent to every workers
+    Args:
+        dataset_name: the name of the dataset
+        workers: List of syft.VirtualWorker, graph data is going to be sent to these workers
     """
 
     # Store the training data and labels of all the clients
     datasets = []
     # TODO: populate this datasets list with ((adj, feature..), labels) in the following for loop
 
+    # number of clients
+    n_clients = len(workers)
+    clients_data_dict = {}
     for i in range(n_clients):
+        if i == 5:
+            break
+
         # path of features
         path_feat = "/home/amax/lym/SAFA_semiAsyncFL-master/data/{}/{}/{}_{}_feat.txt".format(
             dataset_name, n_clients, dataset_name, i
@@ -56,9 +64,6 @@ def get_federated_graph_dataset(dataset_name, n_clients):
         adj, features, seq = process.load_data_2(path_edge, path_feat)
         num_nodes = features.shape[0]
         ft_size = features.shape[1]
-
-        print(f"第{i}个参与方的节点数量:{num_nodes}")
-        print(f"第{i}个参与方的特征数量:{ft_size}")
 
         # hyperparameter
         hid_units = 256
@@ -74,21 +79,28 @@ def get_federated_graph_dataset(dataset_name, n_clients):
         aug_type = 'mask'
         drop_percent = 0.4
 
+        # define device (gpu if gpu is available)
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        # make features a Tensor and move it to gpu
+        features_tensor = torch.tensor(features, dtype=torch.float32)
+        features_tensor = features_tensor.to(device)
+
         # data augmentation
         if aug_type == 'edge':
-            aug_features1 = features
-            aug_features2 = features
+            aug_features1 = features_tensor
+            aug_features2 = features_tensor
             aug_adj1 = aug.aug_random_edge(adj, drop_percent=drop_percent)
             aug_adj2 = aug.aug_random_edge(adj, drop_percent=drop_percent)
         elif aug_type == 'subgraph':
-            aug_features1, aug_adj1 = aug.aug_subgraph(features, adj, drop_percent=drop_percent)
-            aug_features2, aug_adj2 = aug.aug_subgraph(features, adj, drop_percent=drop_percent)
+            aug_features1, aug_adj1 = aug.aug_subgraph(features_tensor, adj, drop_percent=drop_percent)
+            aug_features2, aug_adj2 = aug.aug_subgraph(features_tensor, adj, drop_percent=drop_percent)
         elif aug_type == 'node':
-            aug_features1, aug_adj1 = aug.aug_drop_node(features, adj, drop_percent=drop_percent)
-            aug_features2, aug_adj2 = aug.aug_drop_node(features, adj, drop_percent=drop_percent)
+            aug_features1, aug_adj1 = aug.aug_drop_node(features_tensor, adj, drop_percent=drop_percent)
+            aug_features2, aug_adj2 = aug.aug_drop_node(features_tensor, adj, drop_percent=drop_percent)
         elif aug_type == 'mask':  # Change the node features, preserving the graph topology
-            aug_features1 = aug.aug_random_mask(features, drop_percent=drop_percent)
-            aug_features2 = aug.aug_random_mask(features, drop_percent=drop_percent)
+            aug_features1 = aug.aug_random_mask(features_tensor, drop_percent=drop_percent)
+            aug_features2 = aug.aug_random_mask(features_tensor, drop_percent=drop_percent)
             aug_adj1 = adj
             aug_adj2 = adj
         else:
@@ -108,35 +120,73 @@ def get_federated_graph_dataset(dataset_name, n_clients):
         sp_aug_adj1 = process.sparse_mx_to_torch_sparse_tensor(aug_adj1)
         sp_aug_adj2 = process.sparse_mx_to_torch_sparse_tensor(aug_adj2)
 
+        # shuffle features
+        idx = np.random.permutation(num_nodes)
+        shuffle_features = features[idx, :]
+        # convert to Tensor
+        shuffle_features = torch.tensor(shuffle_features, dtype=torch.float32)
+
         # specify device
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
         if torch.cuda.is_available():
-            print("using gpu")
-
-            # move training model to device
+            # move training model to device(gpu)
             model.to(device)
-
-            # move features to device
-            features = features.to(device)
 
             # move aug_features to device
             aug_features1 = aug_features1.to(device)
             aug_features2 = aug_features2.to(device)
 
-            # move sp_adj to device
+            # move shuffle_features to device(gpu)
+            shuffle_features = shuffle_features.to(device)
+
+            # move sp_adj to device(gpu)
             sp_adj = sp_adj.to(device)
 
-            # move sp_aug_adj to device
+            # move sp_aug_adj to device(gpu)
             sp_aug_adj1 = sp_aug_adj1.to(device)
             sp_aug_adj2 = sp_aug_adj2.to(device)
 
-            # train_data = (features, shuffle_features, aug_features1, aug_features2, sp_adj, sp_aug_adj1, sp_aug_adj2)
+        # train_data = (feature_tensor, shuffle_features, aug_features1, aug_features2, sp_adj, sp_aug_adj1, sp_aug_adj2)
 
-        # TODO: populate datasets list with ((adj, feature..), labels)
+        # TODO: figure out what are going to be in user_data and user_label
         # for example: datasets.append(sy.frameworks.torch.fl.dataset.BaseDataset(user_data, user_label))
         # user_data: Tuple(adj, feature)
         # user_label: [0, 1]???
-        datasets.append()
+
+        user_data = [features_tensor, shuffle_features, aug_features1, aug_features2, sp_adj, sp_aug_adj1, sp_aug_adj2]
+
+        lbl_1 = torch.ones(num_nodes)
+        lbl_2 = torch.zeros(num_nodes)
+        lbl = torch.cat((lbl_1, lbl_2), 0)  # result:[1,1,1,1,1,1,0,0,0,0,0]
+
+        if torch.cuda.is_available():
+            lbl = lbl.to(device)
+
+        user_label = lbl
+
+        # # check tensors and device they are on
+        # for item in my_tuple:
+        #     print(f"data type: {type(item)}, device: {item.device}")
+        #     print(f"shape: {item.shape}")
+        #     print("===============================")
+
+        worker = workers[i]
+        logger.debug(f"sending data to worker {worker.id}")
+
+        # send
+        user_data[0] = user_data[0].send(worker)
+        user_label = user_label.send(worker)
+        datasets.append(sy.frameworks.torch.fl.dataset.BaseDataset(user_data[0], user_label))
+        print(user_label.location.id)
+        # TODO: 制造一个字典， key 是 user_label.location.id，value 是 list of user_data, 并返回
+        clients_data_dict[user_label.location.id] = user_data
+
+    logger.debug("Finish distributing graph data to all the workers")
+    return clients_data_dict, sy.FederatedDataset(datasets)
+
+
+
+
 
 def dataset_federate_noniid(trainset, workers, classNum):
     """
@@ -299,3 +349,13 @@ if torch.cuda.is_available():
     output = net(Variable(images))
     loss = criterion(output, Variable(labels))
 '''
+
+if __name__ == '__main__':
+    user_num = 50
+    hook = sy.TorchHook(torch)
+    workers = []
+    for i in range(1, user_num + 1):
+        exec('user{} = sy.VirtualWorker(hook, id="user{}")'.format(i, i))
+        exec('workers.append(user{})'.format(i))
+    clients_data_dict, dataset = get_federated_graph_dataset('citeseer', workers)
+    print(clients_data_dict)
