@@ -206,7 +206,7 @@ def test(model, test_loader, device):
 
 ##########################定义训练过程，返回梯度########################
 def train(learning_rate, model, train_data, train_targets, device, optimizer):
-    model.train()
+    model.train(,
     model.zero_grad()
     train_targets = Variable(train_targets.long())
     optimizer.zero_grad()
@@ -287,9 +287,7 @@ logs['test_loss'].append(test_loss)
 
 ###################################################################################
 #################################联邦学习过程######################################
-# 获取模型层数和各层形状
-Layers_num, Layers_shape, Layers_nodes = GetModelLayers(model)
-e = torch.exp(torch.tensor(1.))
+
 # 定义训练/测试过程
 for itr in range(1, args.total_iterations + 1):
     # 按设定的每回合用户数量和每个用户的批数量载入数据，单个批的大小为batch_size
@@ -312,7 +310,6 @@ for itr in range(1, args.total_iterations + 1):
         # optimizer = optims[data.location.id]
         # 返回梯度张量，列表形式；同时返回loss；gradient=False，则返回-lr*grad
 
-        # TODO: 在这里改模型model_round(该客户端的训练模型)、训练数据train_data改为图数据、优化器改成GCN所用到的优化器，
         Gradients_Sample, loss = train(args.lr, model_round, train_data, train_targets, device, optimizer)
         Loss_train += loss
         if itr > 1:

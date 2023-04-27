@@ -100,7 +100,7 @@ def test(model, test_loader, device):
 
 ##########################定义训练过程，返回梯度########################
 def train(learning_rate, model, train_data, train_targets, device, optimizer):
-    model.train()
+    model.train(,
     model.zero_grad()
     train_targets = Variable(train_targets.long())
     optimizer.zero_grad()

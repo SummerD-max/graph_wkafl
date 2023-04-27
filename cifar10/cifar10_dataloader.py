@@ -1,3 +1,4 @@
+import copy
 import logging
 
 import numpy as np
@@ -39,19 +40,20 @@ def get_federated_graph_dataset(dataset_name, workers):
     Args:
         dataset_name: the name of the dataset
         workers: List of syft.VirtualWorker, graph data is going to be sent to these workers
+
+    Returns:
+        - client_data_dict: dict. key: worker id, value: (user_data, user_label) where user_data is a list of 7
+    inputs to DGI, and user_label is the label of user_data
+        - federated_data: used to determine the id of worker
     """
 
     # Store the training data and labels of all the clients
     datasets = []
-    # TODO: populate this datasets list with ((adj, feature..), labels) in the following for loop
 
     # number of clients
     n_clients = len(workers)
     clients_data_dict = {}
     for i in range(n_clients):
-        if i == 5:
-            break
-
         # path of features
         path_feat = "/home/amax/lym/SAFA_semiAsyncFL-master/data/{}/{}/{}_{}_feat.txt".format(
             dataset_name, n_clients, dataset_name, i
@@ -148,12 +150,12 @@ def get_federated_graph_dataset(dataset_name, workers):
 
         # train_data = (feature_tensor, shuffle_features, aug_features1, aug_features2, sp_adj, sp_aug_adj1, sp_aug_adj2)
 
-        # TODO: figure out what are going to be in user_data and user_label
         # for example: datasets.append(sy.frameworks.torch.fl.dataset.BaseDataset(user_data, user_label))
         # user_data: Tuple(adj, feature)
         # user_label: [0, 1]???
 
         user_data = [features_tensor, shuffle_features, aug_features1, aug_features2, sp_adj, sp_aug_adj1, sp_aug_adj2]
+        print(user_data[0].device)
 
         lbl_1 = torch.ones(num_nodes)
         lbl_2 = torch.zeros(num_nodes)
@@ -174,18 +176,20 @@ def get_federated_graph_dataset(dataset_name, workers):
         logger.debug(f"sending data to worker {worker.id}")
 
         # send
-        user_data[0] = user_data[0].send(worker)
-        user_label = user_label.send(worker)
-        datasets.append(sy.frameworks.torch.fl.dataset.BaseDataset(user_data[0], user_label))
-        print(user_label.location.id)
-        # TODO: 制造一个字典， key 是 user_label.location.id，value 是 list of user_data, 并返回
-        clients_data_dict[user_label.location.id] = user_data
+        worker_id = copy.deepcopy(user_label)
+        worker_id = worker_id.send(worker)  # label
+
+        # (features_tensor, user_label)
+        datasets.append(sy.frameworks.torch.fl.dataset.BaseDataset(worker_id, worker_id))
+        print(worker_id.location.id)
+
+        # a dict storing the graph data and label of this client
+        clients_data_dict[worker_id.location.id] = (user_data, user_label)
 
     logger.debug("Finish distributing graph data to all the workers")
-    return clients_data_dict, sy.FederatedDataset(datasets)
+    federated_datasets = sy.FederatedDataset(datasets)
 
-
-
+    return clients_data_dict, federated_datasets
 
 
 def dataset_federate_noniid(trainset, workers, classNum):
@@ -253,6 +257,20 @@ def dataset_federate_noniid(trainset, workers, classNum):
         # datasets.append(sy.BaseDataset(user_data, user_label))  # .send(worker)
     logger.debug("Done!")
     return sy.FederatedDataset(datasets), datasTotalNum
+
+
+def get_DGI_model_optimizer():
+    # hyperparameter
+    hid_units = 256
+    activation_fc = 'relu'
+    lr = 0.001
+    weight_decay = 0.0001
+    ft_size = 3703
+    # define model and optimizer
+    model = DGI(n_in=ft_size, n_h=hid_units, activation=activation_fc)
+    optimizer = torch.optim.Adam(params=model.parameters(), lr=lr, weight_decay=weight_decay)
+
+    return model, optimizer
 
 
 '''

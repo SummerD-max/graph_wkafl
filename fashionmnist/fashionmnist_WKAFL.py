@@ -163,7 +163,7 @@ def test(model, test_loader, device):
 
 ##########################定义训练过程，返回梯度########################
 def train(learning_rate, model, train_data, train_target, device, optimizer, gradient=True):
-    model.train()
+    model.train(,
     model.zero_grad()
     train_data = train_data.unsqueeze(1)
     output = model(train_data.float())
