@@ -109,6 +109,7 @@ def sample_mask(idx, l):
     mask[idx] = 1
     return np.array(mask, dtype=np.bool)
 
+
 def load_data(dataset_str):  # {'pubmed', 'citeseer', 'cora'}
     """Load data."""
     names = ['x', 'y', 'tx', 'ty', 'allx', 'ally', 'graph']
@@ -158,7 +159,7 @@ def load_data_2(path_edge, path_feat):
 
     Returns:
         - A tuple (adj, feat_mat, seq).
-        - adj - 图的邻接矩阵，csr_matrix，(node * node) sparse matrix.
+        - adj - 图的邻接矩阵，csr_matrix，(line * line) sparse matrix.
         - feat_mat - 节点特征的矩阵表示，行->节点(节点顺序存储在seq中)，列->该节点的特征。
         - seq - 节点顺序，e.g [530, 430, 100...]，代表 feat_mat 的第一行是 530 号节点，第二行是 430 号节点，以此类推。
 
@@ -183,16 +184,21 @@ def load_data_2(path_edge, path_feat):
     feat_table = {}
     count = 0
     with open(path_feat, 'r') as f:
-        for node in f:
+        for line in f:
             count = count + 1
-            node = node.strip('\n').split(' ')
-            node = [eval(x) for x in node]
-            feat_table[node[0]] = node[1:]  # feat_table[0]=[0 0 0 0 0 1 0 1]
+            line = line.strip('\n').split(' ')
+            line = [eval(x) for x in line]
+            # print(line[0])
+            # feat.append((line[0], line[1:]))
+            try:
+                # G.nodes[line[0]]['feat'] = line[1:]
+                G.nodes[line[0]]['feat'] = line[1:5001]  # 仅取前 5000 个特征
+            except:
+                pass
     print(f"load data_feature of client successfully")
-
     for i in G.nodes:
         seq.append(i)
-        feat.append(feat_table[i])  # feat=[[0 0 0 1 0],[0 1 0 1 0]]
+        feat.append(G.nodes[i]['feat'])
 
     feat_mat = np.mat(feat, dtype=np.float32)
 

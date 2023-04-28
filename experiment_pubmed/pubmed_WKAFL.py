@@ -256,7 +256,6 @@ def train(model, train_data, train_targets, optimizer, global_model=None):
                    sp_aug_adj2,
                    True, None, None, None, aug_type=aug_type)
 
-
     train_targets = train_targets.unsqueeze(0)
     criterion = nn.BCEWithLogitsLoss()
     # calculate loss
@@ -284,10 +283,17 @@ def JaDis(datasNum, userNum):
 
 
 def main():
-
     # 模型和用户生成
     start = time.time()
-    global_model, optimizer = get_DGI_model_optimizer() # global model and optimizer
+    dataset_name = "pubmed"
+    feat_path = f"/home/amax/lym/SAFA_semiAsyncFL-master/data/{dataset_name}/50/{dataset_name}_0_feat.txt"
+    with open(feat_path, 'r') as f:
+        for line in f:
+            line_list = line.strip('\n').split(' ')
+            feat_size = len(line_list) - 1
+            break
+
+    global_model, optimizer = get_DGI_model_optimizer(feat_size)  # global model and optimizer
 
     # 获取模型层数和各层形状
     Layers_num, Layers_shape, Layers_nodes = GetModelLayers(global_model)
@@ -313,7 +319,8 @@ def main():
 
     # 数据载入
     # clients_data_dict: graph data and labels
-    clients_data_dict, federated_datasets = get_federated_graph_dataset("citeseer", workers)
+    clients_data_dict, federated_datasets = get_federated_graph_dataset("pubmed", workers)
+
     # =======================================================
     # TODO: how to deal with testset??
     # testset = tv.datasets.CIFAR10('data2/', train=False, download=True, transform=transform)
@@ -368,7 +375,7 @@ def main():
                                            train_data,
                                            train_targets,
                                            optimizer,
-                                           global_model = global_model)
+                                           global_model=global_model)
             Loss_train += loss
             if itr > 1:
                 for j in range(Layers_num):
@@ -416,7 +423,8 @@ def main():
         # global model -> client model (last )
         for worker_idx in range(len(workers_list)):
             worker_model = models[workers_list[worker_idx]]
-            for idx, (params_server, params_client) in enumerate(zip(global_model.parameters(), worker_model.parameters())):
+            for idx, (params_server, params_client) in enumerate(
+                    zip(global_model.parameters(), worker_model.parameters())):
                 params_client.data = params_server.data
             models[workers_list[worker_idx]] = worker_model  ###添加把更新后的模型返回给用户
 

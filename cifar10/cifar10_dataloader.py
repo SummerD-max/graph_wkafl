@@ -8,6 +8,7 @@ import torch
 from models import DGI
 from utils import aug
 from utils import process
+from utils import process_blog_flicker
 import scipy.sparse as sp
 
 logger = logging.getLogger(__name__)
@@ -62,11 +63,13 @@ def get_federated_graph_dataset(dataset_name, workers):
         path_edge = "/home/amax/lym/SAFA_semiAsyncFL-master/data/{}/{}/{}_{}.txt".format(
             dataset_name, n_clients, dataset_name, i
         )
+        if dataset_name in ("pubmed", "citeseer", "lastfm_asia"):
+            adj, features, seq = process.load_data_2(path_edge, path_feat)
+        elif str.lower(dataset_name) in ("blogcatalog", "flicker7575"):
+            adj, features, seq = process_blog_flicker.load_data_2(path_edge, path_feat)
 
-        adj, features, seq = process.load_data_2(path_edge, path_feat)
         num_nodes = features.shape[0]
         ft_size = features.shape[1]
-
         # hyperparameter
         hid_units = 256
         activation_fc = 'relu'
@@ -186,6 +189,7 @@ def get_federated_graph_dataset(dataset_name, workers):
         # a dict storing the graph data and label of this client
         clients_data_dict[worker_id.location.id] = (user_data, user_label)
 
+    print(f"({num_nodes}, {ft_size})")
     logger.debug("Finish distributing graph data to all the workers")
     federated_datasets = sy.FederatedDataset(datasets)
 
@@ -375,5 +379,5 @@ if __name__ == '__main__':
     for i in range(1, user_num + 1):
         exec('user{} = sy.VirtualWorker(hook, id="user{}")'.format(i, i))
         exec('workers.append(user{})'.format(i))
-    clients_data_dict, dataset = get_federated_graph_dataset('citeseer', workers)
+    clients_data_dict, dataset = get_federated_graph_dataset('flicker7575', workers)
     print(clients_data_dict)
