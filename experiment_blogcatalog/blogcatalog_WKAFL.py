@@ -319,7 +319,7 @@ def main():
 
     # 数据载入
     # clients_data_dict: graph data and labels
-    clients_data_dict, federated_datasets = get_federated_graph_dataset("pubmed", workers)
+    clients_data_dict, federated_datasets = get_federated_graph_dataset("BlogCataLog", workers)
 
     # =======================================================
     # TODO: how to deal with testset??
